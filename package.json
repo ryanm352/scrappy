@@ -1,0 +1,21 @@
+{
+  "name": "scrappy",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+    "puppeteer": "^19.2.2",
+    "puppeteer-cluster": "^0.23.0",
+    "puppeteer-extra": "^3.3.4",
+    "puppeteer-extra-plugin-stealth": "^2.11.1",
+    "request-promise-native": "^1.0.9",
+    "rxjs": "^7.5.7"
+  }
+}
