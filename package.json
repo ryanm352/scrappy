@@ -11,6 +11,7 @@
   "description": "",
   "type": "module",
   "dependencies": {
+    "fs-extra": "^11.1.0",
     "puppeteer": "^19.2.2",
     "puppeteer-cluster": "^0.23.0",
     "puppeteer-extra": "^3.3.4",

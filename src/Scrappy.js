@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
-import fs from "fs/promises";
+import fs from "fs";
 import { executablePath } from "puppeteer";
 import { Cluster } from "puppeteer-cluster";
 import { Subject } from 'rxjs';
@@ -14,6 +14,7 @@ export default class Scrappy {
     isListening = false;
     gameData = [];
     standings = [];
+    teams = [];
 
 
     async fetchGame(targetUrl, fetchAllGames = false) {
@@ -25,19 +26,19 @@ export default class Scrappy {
         console.log(String.fromCodePoint(0x1F575) + '  Launching Browser in stealth mode... target: ' + targetUrl);
 
         //initiate the browser if none given
-            const cluster = await Cluster.launch({
-                concurrency: Cluster.CONCURRENCY_CONTEXT,
-                maxConcurrency: 2,
-                args: [
-                    "--no-sandbox",
-                    "--disable-gpu",
-                    "--disable-setuid-sandbox",
-                    "--disable-web-security",
-                ],
-                headless: true,
-                ignoreHTTPSErrors: true,
-                executablePath: executablePath(),
-            });
+        const cluster = await Cluster.launch({
+            concurrency: Cluster.CONCURRENCY_CONTEXT,
+            maxConcurrency: 2,
+            args: [
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-setuid-sandbox",
+                "--disable-web-security",
+            ],
+            headless: true,
+            ignoreHTTPSErrors: true,
+            executablePath: executablePath(),
+        });
 
         //create a new in headless chrome
         //const page = await browser.newPage();
@@ -52,38 +53,26 @@ export default class Scrappy {
                 if (r.url().includes('/stats/live/game-summaries')) {
                     try {
                         const json = await r.json();
-                            //console.log(r.url());
-                            console.log('FETCH: ' + r.url());
-                            let urlParams = new URLSearchParams(new URL(r.url()).search);
-                            //const season = urlParams.get('season');
-                            //const seasonType = urlParams.get('seasonType');
-                            //const week = urlParams.get('week');
-                            //console.log(season + '_' + seasonType + '_' + week + '.json');
-                            //let path = 'stats/' + season + '/game_summaries/';
+                        console.log('FETCH: ' + r.url());
+                        if (json.data.length > 0) {
                             this.gameData.push(json.data);
-                            /*await fs.mkdir(path, { recursive: true }).catch(console.error).finally(() => {
-                                fs.writeFile(path + season + '_' + seasonType + '_' + week + '.json', JSON.stringify(json.data));
-                            });*/
+                        }
                     }
                     catch (e) {
                         //console.log(e);
                     }
                 }
 
+                // Used to get team names and standings
                 if (r.url().includes('/standings')) {
                     try {
                         const json = await r.json();
-                        /*console.log('FETCH: ' + r.url());
-                        console.log(json.weeks[0].standings.map(x => x.team));
-                        console.log(json.weeks[0]);*/
-                        //let filename = page.url().split('/').pop() ?? 'test.html';
-                        //console.log(filename);
-                     //   await fs.writeFile('standings.json', json);
                         const index = this.standings.findIndex(object => object.week === json.weeks.week);
-                        if (index === -1) {
-                            this.standings.push(json.weeks);
+                        if (json.weeks) {
+                            if (index === -1) {
+                                this.standings.push(json.weeks[0].standings);
+                            }
                         }
-                        //console.log(json.weeks);
                     }
                     catch (e) {
                         //console.log(e);
@@ -92,16 +81,30 @@ export default class Scrappy {
 
                 if (r.url().includes('/weeks/date')) {
                     try {
-                       /* const json = await r.json();
-                        console.log('FETCH: ' + r.url());
-                        console.log(json.byeTeams.map(x => x));
-                        console.log(json);*/
+                        /* const json = await r.json();
+                         console.log('FETCH: ' + r.url());
+                         console.log(json.byeTeams.map(x => x));
+                         console.log(json);*/
 
                     }
                     catch (e) {
                         //console.log(e);
                     }
                 }
+
+                if (r.url().includes('/venues')) {
+                    try {
+                        /* const json = await r.json();
+                         console.log('FETCH: ' + r.url());
+                         console.log(json.byeTeams.map(x => x));
+                         console.log(json);*/
+
+                    }
+                    catch (e) {
+                        //console.log(e);
+                    }
+                }
+
             });
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 0 });
 //            await page.content();
@@ -130,8 +133,12 @@ export default class Scrappy {
         await cluster.close();
         this.listener.unsubscribe();
         console.log('game data');
-        console.log(this.gameData);
-        console.log(this.standings);
+        this.buildTeams();
+        this.gameData = this.modifyGameData();
+        //console.log(JSON.stringify(this.gameData));
+        fs.writeFileSync('./data.json', JSON.stringify(this.gameData), 'utf-8');
+        fs.writeFileSync('./teams.json', JSON.stringify(this.teams), 'utf-8');
+        //console.log(this.teams);
     }
 
     async fetchAllGameUrls(page) {
@@ -155,5 +162,32 @@ export default class Scrappy {
         this.subject$.next(urls);
 
         return urls;
+    }
+
+    modifyGameData() {
+        return this.gameData.map(gameWeek => gameWeek.map(game => {
+            this.teams.find(team => {
+                if (team.teamId === game.awayTeam.teamId) {
+                    game.awayTeam.name = team.name;
+                    //game.awayTeam.stats = team.stats;
+                }
+
+                if (team.teamId === game.homeTeam.teamId) {
+                    game.homeTeam.name = team.name;
+                    //game.homeTeam.stats = team.stats;
+                }
+            });
+            return game;
+        }));
+    }
+
+    buildTeams() {
+        this.standings.slice(-1)[0].map(standing => {
+            this.teams.push({
+                teamId: standing.team.id,
+                name: standing.team.fullName,
+                stats: standing.overall
+            });
+        });
     }
 }
