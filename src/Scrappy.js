@@ -43,6 +43,7 @@ export default class Scrappy {
         //create a new in headless chrome
         //const page = await browser.newPage();
         cluster.on("taskerror", (err, data) => {
+            // add re-try data here
             console.log(`Error crawling ${data}: ${err.message}`);
         });
 
@@ -55,7 +56,14 @@ export default class Scrappy {
                         const json = await r.json();
                         console.log('FETCH: ' + r.url());
                         if (json.data.length > 0) {
-                            this.gameData.push(json.data);
+                            json.data.forEach(game => {
+                                let matches = this.gameData.games.find(existingGame => existingGame.gameId === game.gameId);
+                                // Only add non-existing games to data
+                                if (!matches) {
+                                    this.gameData.games.push(game);
+                                }
+                            });
+                            //console.log(this.gameData);
                         }
                     }
                     catch (e) {
@@ -112,7 +120,7 @@ export default class Scrappy {
 
             if (fetchAllGames) {
                 if (!this.isListening) {
-                    console.log('attaching to listen for more selectors');
+                    console.debug('DEBUG: Attaching to listen for more selectors');
                     await Promise.all([
                         page.waitForSelector('[data-test-id="facemask-row"]')
                     ]).then(() => console.log(String.fromCodePoint(0x2705) + ' Page loaded'));
@@ -132,12 +140,13 @@ export default class Scrappy {
         await cluster.idle();
         await cluster.close();
         this.listener.unsubscribe();
+
         console.log('game data');
-        this.buildTeams();
-        this.gameData = this.modifyGameData();
+        this.gameData.teams = this.buildTeams();
+        this.gameData.games = this.modifyGameData();
         //console.log(JSON.stringify(this.gameData));
         fs.writeFileSync('./data.json', JSON.stringify(this.gameData), 'utf-8');
-        fs.writeFileSync('./teams.json', JSON.stringify(this.teams), 'utf-8');
+        //fs.writeFileSync('./teams.json', JSON.stringify(this.teams), 'utf-8');
         //console.log(this.teams);
     }
 
@@ -165,8 +174,8 @@ export default class Scrappy {
     }
 
     modifyGameData() {
-        return this.gameData.map(gameWeek => gameWeek.map(game => {
-            this.teams.find(team => {
+        return this.gameData.games.map(game => {
+            this.gameData.teams.find(team => {
                 if (team.teamId === game.awayTeam.teamId) {
                     game.awayTeam.name = team.name;
                     //game.awayTeam.stats = team.stats;
@@ -178,10 +187,11 @@ export default class Scrappy {
                 }
             });
             return game;
-        }));
+        });
     }
 
     buildTeams() {
+        // get latest standing for current Week
         this.standings.slice(-1)[0].map(standing => {
             this.teams.push({
                 teamId: standing.team.id,
@@ -189,5 +199,6 @@ export default class Scrappy {
                 stats: standing.overall
             });
         });
+        return this.teams;
     }
 }
